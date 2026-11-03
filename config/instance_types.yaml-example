@@ -1,0 +1,47 @@
+ct:
+  micro:
+    default:
+    c025m025:
+    c05m05:
+    c1m05:
+    c1m1:
+  service:
+  strong:
+    default:
+    c2m4:
+    c2m6:
+    c2m8:
+    c4m8:
+    c4m12:
+    c4m16:
+vm:
+  mini:
+    default:
+    c1m1:
+    c1m2:
+    c1m4:
+    c2m2:
+    c2m4:
+  midi:
+    default:
+      import_disk: "debian-13-genericcloud-amd64.qcow2"
+      size_minimum: 5
+    c2m6:
+      cpu: 2
+      memory: 6144
+    c2m8:
+      cpu: 2
+      memory: 8192
+    c2m12:
+  big:
+    default:
+    c4m8:
+    c4m12:
+    c4m16:
+    c4m20:
+    c4m24:
+  k8s:
+    default:
+    control:
+    worker:
+    ceph:

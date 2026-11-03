@@ -1,0 +1,4 @@
+proxmox_ve_hosts:
+  - <LIST OF PROXMOX SERVERS>
+proxmox_ve_datastorage: "STORAGE FOR VM DISKS"
+proxmox_ve_imagestorage: "STORAGE FOR ISO/IMPORT IMAGES"
