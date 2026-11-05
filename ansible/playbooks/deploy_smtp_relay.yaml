@@ -1,0 +1,5 @@
+---
+- name: Deploy Postfix as SMTP Relay for HomeLab
+  hosts: smtp_relay
+  roles:
+    - postfix_relay

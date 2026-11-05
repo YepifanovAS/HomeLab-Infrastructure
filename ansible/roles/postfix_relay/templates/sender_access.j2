@@ -1,0 +1,4 @@
+{% for sender in POSTFIX_ALLOWED_SENDERS %}
+/^{{ sender | regex_escape }}$/ OK
+{% endfor %}
+/.*/ REJECT Sender address not permitted

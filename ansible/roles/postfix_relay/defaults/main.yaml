@@ -1,0 +1,46 @@
+postfix_config:
+  myhostname: "{{ POSTFIX_HOSTNAME }}"
+  mydomain: "{{ POSTFIX_MAIL_DOMAIN }}"
+  myorigin: '$mydomain'
+  mydestination: localhost.localdomain, localhost
+  inet_interfaces: "127.0.0.1, {{ POSTFIX_IP }}"
+  inet_protocols: ipv4
+  mynetworks: "127.0.0.0/8, {{ POSTFIX_ALLOWED_NETWORK }}"
+  smtpd_client_restrictions: 'permit_mynetworks, reject'
+  smtpd_relay_restrictions: 'permit_mynetworks, reject'
+  smtpd_sender_restrictions: 'check_sender_access regexp:/etc/postfix/sender_access, reject'
+  relayhost: "{{ POSTFIX_RELAY_HOST }}"
+  smtp_sasl_auth_enable: 'yes'
+  smtp_sasl_security_options: noanonymous
+  smtp_sasl_password_maps: hash:/etc/postfix/sasl_passwd
+  smtp_tls_security_level: verify
+  smtp_tls_CAfile: /etc/ssl/certs/ca-certificates.crt
+
+
+postfix_relay_verify_enabled: true
+postfix_relay_verify_send_enabled: false
+
+postfix_relay_verify_host: "127.0.0.1"
+postfix_relay_verify_port: 25
+postfix_relay_verify_timeout: 30
+
+postfix_relay_verify_rejection_text: "Sender address not permitted"
+
+postfix_relay_verify_positive:
+  # Перевірка надсилання пошти від правильного користувача. За замовчуванням не виконується.
+  - name: "01 - noreply to domain"
+    mail_from: "noreply@example.com"
+    header_from: "noreply@example.com"
+    rcpt_to: "random@gmail.com"
+
+postfix_relay_verify_negative:
+  # Перевірка відмови надсилання пошти від імені випадкового користувача
+  - name: "05 - external sender"
+    mail_from: "user@gmail.com"
+    header_from: "user@gmail.com"
+    rcpt_to: "another@gmail.com"
+  # Перевірка відмови надсилання пошти від імені випадкового користувача правильного домена
+  - name: "06 - unauthorized domain sender"
+    mail_from: "user@example.com"
+    header_from: "user@example.com"
+    rcpt_to: "another@example.com"

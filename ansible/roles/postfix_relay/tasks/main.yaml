@@ -1,0 +1,142 @@
+---
+- name: Validate required Postfix variables
+  ansible.builtin.assert:
+    that:
+      - lookup('ansible.builtin.vars', item, default='') | string | trim | length > 0
+    fail_msg: "Required variable '{{ item }}' is undefined or empty"
+    quiet: true
+  loop:
+    - POSTFIX_MAIL_DOMAIN
+    - POSTFIX_ALLOWED_NETWORK
+    - POSTFIX_IP
+    - POSTFIX_HOSTNAME
+    - POSTFIX_RELAY_HOST
+    - GOOGLE_AUTH_USER
+    - GOOGLE_AUTH_APP_PASSWD
+  no_log: true
+
+- name: Configure Postfix installation
+  ansible.builtin.debconf:
+    name: postfix
+    question: "{{ item.question }}"
+    value: "{{ item.value }}"
+    vtype: "{{ item.vtype }}"
+  loop:
+    - question: postfix/main_mailer_type
+      vtype: select
+      value: Internet Site
+    - question: postfix/mailname
+      vtype: string
+      value: "{{ POSTFIX_MAIL_DOMAIN }}"
+  no_log: true
+
+- name: Install Postfix
+  ansible.builtin.apt:
+    name:
+      - postfix
+      - libsasl2-modules
+      - ca-certificates
+      - swaks
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+
+- name: Configure Postfix SMTP credentials
+  ansible.builtin.template:
+    src: sasl_passwd.j2
+    dest: "/etc/postfix/sasl_passwd"
+    owner: root
+    group: root
+    mode: '0600'
+  no_log: true
+  register: postfix_credentials
+
+- name: Inspect Postfix SASL source
+  ansible.builtin.stat:
+    path: /etc/postfix/sasl_passwd
+    get_checksum: false
+    get_mime: false
+  register: postfix_sasl_source
+
+- name: Inspect Postfix SASL database
+  ansible.builtin.stat:
+    path: /etc/postfix/sasl_passwd.db
+    get_checksum: false
+    get_mime: false
+  register: postfix_sasl_database
+
+- name: Build or repair Postfix SASL database
+  ansible.builtin.command:
+    argv:
+      - postmap
+      - hash:/etc/postfix/sasl_passwd
+  when:
+    - not ansible_check_mode
+    - >-
+      postfix_credentials.changed
+      or not postfix_sasl_database.stat.exists
+      or postfix_sasl_source.stat.mtime > postfix_sasl_database.stat.mtime
+  no_log: true
+  notify: Restart Postfix
+
+- name: Secure Postfix SASL database
+  ansible.builtin.file:
+    path: /etc/postfix/sasl_passwd.db
+    owner: root
+    group: root
+    mode: "0600"
+  when: not ansible_check_mode
+
+- name: Configure allowed SMTP senders
+  ansible.builtin.template:
+    src: sender_access.j2
+    dest: /etc/postfix/sender_access
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart Postfix
+
+- name: Read current Postfix configuration
+  ansible.builtin.command:
+    argv:
+      - postconf
+      - -h
+      - "{{ item.key }}"
+  loop: "{{ postfix_config | dict2items }}"
+  register: postfix_current
+  changed_when: false
+  check_mode: false
+  no_log: true
+
+- name: Apply Postfix configuration
+  ansible.builtin.command:
+    argv:
+      - postconf
+      - -e
+      - "{{ item.item.key }} = {{ item.item.value }}"
+  loop: "{{ postfix_current.results }}"
+  when: item.stdout != (item.item.value | string)
+  notify: Restart Postfix
+  no_log: true
+
+- name: Validate Postfix configuration
+  ansible.builtin.command: postfix check
+  changed_when: false
+  when: not ansible_check_mode
+
+- name: Apply pending Postfix restart
+  ansible.builtin.meta: flush_handlers
+
+- name: Ensure Postfix is enabled and running
+  ansible.builtin.service:
+    name: postfix
+    state: started
+    enabled: true
+
+- name: Verify Postfix relay
+  ansible.builtin.import_tasks: verify.yaml
+  when:
+    - postfix_relay_verify_enabled | bool
+    - not ansible_check_mode

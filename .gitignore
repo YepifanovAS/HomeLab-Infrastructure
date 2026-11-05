@@ -94,5 +94,7 @@ credentials/*
 credentials/ssh_keys/*
 !credentials/ssh_keys/README.md
 
+old/*
+
 # => missed files in Terraform/OpenTofu .gitignore configuration
 .terraform.lock.hcl

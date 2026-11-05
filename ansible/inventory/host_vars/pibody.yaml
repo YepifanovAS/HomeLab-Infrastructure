@@ -1,0 +1,6 @@
+ansible_host: 192.168.0.232
+ip: 192.168.0.232
+access_ip: 192.168.0.232
+ansible_user: "{{ vault_ansible_user }}"
+ansible_python_interpreter: /usr/bin/python3
+ansible_become: true

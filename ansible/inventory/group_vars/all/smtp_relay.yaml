@@ -1,0 +1,10 @@
+POSTFIX_MAIL_DOMAIN: "{{ vault_smtp_domain }}"
+POSTFIX_ALLOWED_NETWORK: "192.168.0.0/24"
+POSTFIX_IP: "192.168.0.232"
+POSTFIX_HOSTNAME: "smtp.{{ POSTFIX_MAIL_DOMAIN }}"
+POSTFIX_RELAY_HOST: "[smtp.gmail.com]:587"
+GOOGLE_AUTH_USER: "{{ vault_smtp_username }}"
+GOOGLE_AUTH_APP_PASSWD: "{{ vault_smtp_password }}"
+POSTFIX_ALLOWED_SENDERS:
+  - "noreply@{{ vault_smtp_domain }}"
+  - "homelab-notify@{{ vault_smtp_domain }}"

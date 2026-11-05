@@ -1,0 +1,75 @@
+---
+- name: Verify Postfix configuration
+  ansible.builtin.command:
+    cmd: postfix check
+  changed_when: false
+  become: true
+
+- name: Verify Postfix service
+  ansible.builtin.command:
+    cmd: systemctl is-active postfix
+  register: postfix_verify_service
+  changed_when: false
+  failed_when: postfix_verify_service.stdout != 'active'
+
+- name: Verify allowed SMTP senders
+  ansible.builtin.command:
+    argv:
+      - swaks
+      - --server
+      - "{{ postfix_relay_verify_host }}"
+      - --port
+      - "{{ postfix_relay_verify_port | string }}"
+      - --from
+      - "{{ item.mail_from }}"
+      - --to
+      - "{{ item.rcpt_to }}"
+      - --header
+      - "From: {{ item.header_from }}"
+      - --header
+      - "Subject: Postfix relay verification - {{ item.name }}"
+      - --body
+      - "Automated SMTP verification: {{ item.name }}"
+      - --timeout
+      - "{{ postfix_relay_verify_timeout | string }}"
+  loop: "{{ postfix_relay_verify_positive }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: postfix_verify_positive_results
+  changed_when: false
+  failed_when: postfix_verify_positive_results.rc != 0
+  when: postfix_relay_verify_send_enabled | bool
+
+- name: Verify rejected SMTP senders
+  ansible.builtin.command:
+    argv:
+      - swaks
+      - --server
+      - "{{ postfix_relay_verify_host }}"
+      - --port
+      - "{{ postfix_relay_verify_port | string }}"
+      - --from
+      - "{{ item.mail_from }}"
+      - --to
+      - "{{ item.rcpt_to }}"
+      - --quit-after
+      - RCPT
+      - --timeout
+      - "{{ postfix_relay_verify_timeout | string }}"
+  loop: "{{ postfix_relay_verify_negative }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: postfix_verify_negative_results
+  changed_when: false
+  failed_when: >-
+    postfix_verify_negative_results.rc not in [23, 24]
+    or postfix_relay_verify_rejection_text
+       not in postfix_verify_negative_results.stdout
+
+- name: Report Postfix verification results
+  ansible.builtin.debug:
+    msg:
+      - "Postfix configuration: OK"
+      - "Postfix service: OK"
+      - "Positive SMTP tests: {{ 'completed' if postfix_relay_verify_send_enabled | bool else 'skipped' }}"
+      - "Negative SMTP tests: passed"
