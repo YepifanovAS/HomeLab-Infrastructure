@@ -1,0 +1,25 @@
+- name: Deploy Nginx reverse proxy config file
+  ansible.builtin.template:
+    src: ldap_nginx.conf.j2
+    dest: "/etc/nginx/sites-available/{{ lldap_fqdn }}.conf"
+    mode: "0644"
+  notify: Restart Nginx
+
+- name: Enable LLDAP Nginx configuration
+  ansible.builtin.file:
+    src: "/etc/nginx/sites-available/{{ lldap_fqdn }}.conf"
+    dest: "/etc/nginx/sites-enabled/{{ lldap_fqdn }}.conf"
+    state: link
+
+- name: Check if Nginx configuration is correct
+  ansible.builtin.command:
+    argv:
+      - nginx
+      - -t
+  changed_when: false
+
+- name: Ensure Nginx is enabled and running
+  ansible.builtin.service:
+    name: nginx
+    state: started
+    enabled: true

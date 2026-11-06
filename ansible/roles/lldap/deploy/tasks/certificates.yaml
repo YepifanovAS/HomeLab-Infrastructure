@@ -1,0 +1,40 @@
+- name: Check source certificates
+  ansible.builtin.stat:
+    path: "{{ lldap_certs_dir_origin }}/{{ item }}"
+    follow: true
+  loop:
+    - fullchain.pem
+    - privkey.pem
+  register: lldap_certs_stat
+
+- name: Validate source certificates
+  ansible.builtin.assert:
+    that:
+      - item.stat.exists
+      - item.stat.isreg
+      - item.stat.readable
+    fail_msg: "Certificate unavailable: {{ item.item }}"
+  loop: "{{ lldap_certs_stat.results }}"
+  no_log: true
+
+- name: Create LLDAP certificates directory
+  ansible.builtin.file:
+    path: "{{ lldap_dir }}/certs"
+    state: directory
+    owner: "{{ lldap_user_uid }}"
+    group: "{{ lldap_user_gid }}"
+    mode: "0700"
+
+- name: Copy LLDAP certificates
+  ansible.builtin.copy:
+    src: "{{ lldap_certs_dir_origin }}/{{ item }}"
+    dest: "{{ lldap_dir }}/certs/{{ item }}"
+    remote_src: true
+    local_follow: true
+    owner: "{{ lldap_user_uid }}"
+    group: "{{ lldap_user_gid }}"
+    mode: "0600"
+  loop:
+    - fullchain.pem
+    - privkey.pem
+  no_log: true

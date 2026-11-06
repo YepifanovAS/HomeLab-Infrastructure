@@ -1,0 +1,23 @@
+---
+services:
+  lldap:
+    image: "{{ lldap_image }}"
+    container_name: lldap
+    restart: unless-stopped
+
+    ports:
+      - "{{ lldap_http_bind }}:{{ lldap_http_port }}:17170"
+      - "6360:6360"
+
+    env_file:
+      - .env
+
+    volumes:
+      - ./data:/data
+      - ./certs:/certs:ro
+      - ./bootstrap:/bootstrap:ro
+    networks:
+      - auth
+networks:
+  auth:
+    external: true

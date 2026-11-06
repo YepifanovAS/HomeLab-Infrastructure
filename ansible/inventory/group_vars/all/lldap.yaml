@@ -1,0 +1,5 @@
+lldap_user_uid: 2000
+lldap_user_gid: 2000
+lldap_timezone: "{{ homelab_timezone }}"
+lldap_base_dn: "{{ vault_lldap_base_dn }}"
+lldap_certs_dir_origin: "{{ vault_lldap_certs_dir_origin }}"

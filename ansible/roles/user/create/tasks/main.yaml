@@ -1,0 +1,217 @@
+- name: Validate user parameters
+  ansible.builtin.assert:
+    that:
+      - user_create_name is defined
+      - user_create_name | default('') is match('^[a-z_][a-z0-9_-]*[$]?$')
+      - user_create_uid is defined
+      - (user_create_uid | default('') | string) is match('^[0-9]+$')
+      - user_create_home is defined
+      - user_create_home | default('') is match('^/')
+      - user_create_group is string
+      - user_create_group | length == 0 or user_create_group is match('^[a-z_][a-z0-9_-]*[$]?$')
+      - user_create_gid is none or (user_create_gid | string) is match('^[0-9]+$')
+      - user_create_shell | length > 0
+      - user_create_comment is string
+      - user_create_system is boolean
+      - user_create_home_enabled is boolean
+
+- name: Lookup specified group by name
+  ansible.builtin.command:
+    argv:
+      - getent
+      - group
+      - "{{ user_create_group }}"
+  register: user_create_given_group
+  changed_when: false
+  failed_when: user_create_given_group.rc not in [0, 2]
+  when: user_create_group | length > 0
+
+- name: Lookup specified group by GID
+  ansible.builtin.command:
+    argv:
+      - getent
+      - group
+      - "{{ user_create_gid | string }}"
+  register: user_create_given_gid
+  changed_when: false
+  failed_when: user_create_given_gid.rc not in [0, 2]
+  when: user_create_gid is not none
+
+- name: Resolve group when neither group nor GID is specified
+  ansible.builtin.set_fact:
+    user_create_resolved_group: "{{ user_create_name }}"
+    user_create_resolved_gid: "{{ user_create_uid | int }}"
+  when:
+    - user_create_group | length == 0
+    - user_create_gid is none
+
+- name: Resolve group when only GID is specified
+  ansible.builtin.set_fact:
+    user_create_resolved_group: >-
+      {{
+        user_create_given_gid.stdout.split(':')[0]
+        if user_create_given_gid.rc == 0
+        else user_create_name
+      }}
+    user_create_resolved_gid: "{{ user_create_gid | int }}"
+  when:
+    - user_create_group | length == 0
+    - user_create_gid is not none
+
+- name: Resolve GID when only group is specified
+  ansible.builtin.set_fact:
+    user_create_resolved_group: "{{ user_create_group }}"
+    user_create_resolved_gid: >-
+      {{
+        user_create_given_group.stdout.split(':')[2] | int
+        if user_create_given_group.rc == 0
+        else user_create_uid | int
+      }}
+  when:
+    - user_create_group | length > 0
+    - user_create_gid is none
+
+- name: Resolve group when both group and GID are specified
+  ansible.builtin.set_fact:
+    user_create_resolved_group: "{{ user_create_group }}"
+    user_create_resolved_gid: "{{ user_create_gid | int }}"
+  when:
+    - user_create_group | length > 0
+    - user_create_gid is not none
+
+- name: Lookup resolved group by name
+  ansible.builtin.command:
+    argv:
+      - getent
+      - group
+      - "{{ user_create_resolved_group }}"
+  register: user_create_group_by_name
+  changed_when: false
+  failed_when: user_create_group_by_name.rc not in [0, 2]
+
+- name: Lookup resolved group by GID
+  ansible.builtin.command:
+    argv:
+      - getent
+      - group
+      - "{{ user_create_resolved_gid | string }}"
+  register: user_create_group_by_gid
+  changed_when: false
+  failed_when: user_create_group_by_gid.rc not in [0, 2]
+
+- name: Validate resolved group
+  ansible.builtin.assert:
+    that:
+      - >-
+        (user_create_group_by_name.rc == 2
+        and user_create_group_by_gid.rc == 2)
+        or
+        (user_create_group_by_name.rc == 0
+        and user_create_group_by_gid.rc == 0
+        and user_create_group_by_name.stdout.split(':')[2] | int
+            == user_create_resolved_gid | int
+        and user_create_group_by_gid.stdout.split(':')[0]
+            == user_create_resolved_group)
+    fail_msg: >-
+      Group conflict: requested
+      {{ user_create_resolved_group }}:{{ user_create_resolved_gid }}.
+      Name lookup: {{ user_create_group_by_name.stdout }}.
+      GID lookup: {{ user_create_group_by_gid.stdout }}.
+
+- name: Lookup local user
+  ansible.builtin.command:
+    argv:
+      - getent
+      - -s
+      - files
+      - passwd
+      - "{{ user_create_name }}"
+  register: user_create_local_user
+  changed_when: false
+  failed_when: user_create_local_user.rc not in [0, 2]
+
+- name: Lookup user through NSS
+  ansible.builtin.command:
+    argv:
+      - getent
+      - passwd
+      - "{{ user_create_name }}"
+  register: user_create_nss_user
+  changed_when: false
+  failed_when: user_create_nss_user.rc not in [0, 2]
+
+- name: Validate user is not LDAP-only
+  ansible.builtin.assert:
+    that:
+      - >-
+        user_create_local_user.rc == 0
+        or user_create_nss_user.rc == 2
+    fail_msg: >-
+      User {{ user_create_name }} exists in NSS
+      but not in the local passwd database.
+  when: user_create_nss_user.rc == 0
+
+- name: Lookup UID through NSS
+  ansible.builtin.command:
+    argv:
+      - getent
+      - passwd
+      - "{{ user_create_uid | string }}"
+  register: user_create_uid_lookup
+  changed_when: false
+  failed_when: user_create_uid_lookup.rc not in [0, 2]
+
+- name: Validate UID availability
+  ansible.builtin.assert:
+    that:
+      - >-
+        user_create_uid_lookup.rc == 2
+        or
+        (user_create_uid_lookup.rc == 0
+        and user_create_local_user.rc == 0
+        and user_create_uid_lookup.stdout.split(':')[0]
+            == user_create_name)
+    fail_msg: >-
+      UID {{ user_create_uid }} is already assigned
+      to another user: {{ user_create_uid_lookup.stdout }}.
+
+- name: Validate existing local user
+  when: user_create_local_user.rc == 0
+  vars:
+    existing_user: "{{ user_create_local_user.stdout.split(':') }}"
+  ansible.builtin.assert:
+    that:
+      - existing_user[2] | int == user_create_uid | int
+      - existing_user[3] | int == user_create_resolved_gid | int
+      - existing_user[4] == user_create_comment
+      - existing_user[5] == user_create_home
+      - existing_user[6] == user_create_shell
+    fail_msg: >-
+      User {{ user_create_name }} already exists
+      with different parameters.
+      Actual: {{ user_create_local_user.stdout }}.
+
+- name: Create missing local user
+  when: user_create_local_user.rc == 2
+  block:
+    - name: Create primary group if missing
+      ansible.builtin.group:
+        name: "{{ user_create_resolved_group }}"
+        gid: "{{ user_create_resolved_gid | int }}"
+        system: "{{ user_create_system }}"
+        state: present
+      when:
+        - user_create_group_by_name.rc == 2
+        - user_create_group_by_gid.rc == 2
+
+    - name: Create user
+      ansible.builtin.user:
+        name: "{{ user_create_name }}"
+        uid: "{{ user_create_uid | int }}"
+        group: "{{ user_create_resolved_gid | string }}"
+        home: "{{ user_create_home }}"
+        shell: "{{ user_create_shell }}"
+        comment: "{{ user_create_comment }}"
+        system: "{{ user_create_system }}"
+        create_home: "{{ user_create_home_enabled }}"
+        state: present

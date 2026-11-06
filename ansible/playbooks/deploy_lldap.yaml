@@ -1,0 +1,19 @@
+---
+- name: Create LLDAP user
+  hosts: lldap
+  tasks:
+    - name: Create LLDAP user
+      ansible.builtin.include_role:
+        name: user/create
+      vars:
+        user_create_name: lldap
+        user_create_uid: "{{ lldap_user_uid }}"
+        user_create_gid: "{{ lldap_user_gid }}"
+        user_create_home: /var/lib/lldap
+        user_create_comment: "LLDAP service account"
+
+- name: Встановлення LLDAP на вузол
+  hosts: lldap
+  roles:
+    - docker_engine
+    - lldap/deploy

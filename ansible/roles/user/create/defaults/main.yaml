@@ -1,0 +1,6 @@
+user_create_group: ""
+user_create_gid: null
+user_create_shell: /usr/sbin/nologin
+user_create_comment: ""
+user_create_system: true
+user_create_home_enabled: false

@@ -1,0 +1,43 @@
+- name: Validate LLDAP secrets
+  ansible.builtin.assert:
+    that:
+      - lldap_admin_password | length >= 8
+      - lldap_jwt_secret | length >= 32
+      - lldap_key_seed | length >= 12
+    fail_msg: "LLDAP secrets must be defined"
+  no_log: true
+
+- name: Create LLDAP directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - "{{ lldap_dir }}"
+    - "{{ lldap_dir }}/data"
+
+- name: Deploy LLDAP environment
+  ansible.builtin.template:
+    src: env.j2
+    dest: "{{ lldap_dir }}/.env"
+    mode: "0600"
+  no_log: true
+
+- name: Deploy LLDAP Docker Compose
+  ansible.builtin.template:
+    src: compose.yaml.j2
+    dest: "{{ lldap_dir }}/compose.yaml"
+    mode: "0644"
+
+- name: Prepare LLDAP certificates
+  ansible.builtin.import_tasks: certificates.yaml
+
+- name: Start LLDAP
+  community.docker.docker_compose_v2:
+    project_src: "{{ lldap_dir }}"
+    state: present
+    pull: missing
+    recreate: auto
+
+- name: Prepare Nginx reverse proxy
+  ansible.builtin.import_tasks: reverse_proxy.yaml

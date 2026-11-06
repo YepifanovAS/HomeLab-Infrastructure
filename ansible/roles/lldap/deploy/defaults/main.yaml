@@ -1,0 +1,11 @@
+lldap_dir: /opt/lldap
+lldap_image: lldap/lldap:stable
+
+lldap_fqdn: "ldap.{{ vault_domain_name }}"
+
+lldap_http_bind: "127.0.0.1"
+lldap_http_port: 17170
+
+lldap_admin_password: "{{ vault_lldap_admin_password }}"
+lldap_jwt_secret: "{{ vault_lldap_jwt_secret }}"
+lldap_key_seed: "{{ vault_lldap_key_seed }}"
