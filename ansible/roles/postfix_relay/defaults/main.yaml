@@ -15,9 +15,12 @@ postfix_config:
   smtp_sasl_password_maps: hash:/etc/postfix/sasl_passwd
   smtp_tls_security_level: verify
   smtp_tls_CAfile: /etc/ssl/certs/ca-certificates.crt
+  smtpd_tls_cert_file: "{{vault_certs_dir_origin}}/fullchain.pem"
+  smtpd_tls_key_file: "{{vault_certs_dir_origin}}/privkey.pem"
+  smtpd_tls_security_level: encrypt
+  smtpd_tls_loglevel: 1
 
-
-postfix_relay_verify_enabled: true
+postfix_relay_verify_enabled: false
 postfix_relay_verify_send_enabled: false
 
 postfix_relay_verify_host: "127.0.0.1"

@@ -1,1 +1,2 @@
+homelab_domain: "{{ vault_domain_name }}"
 homelab_timezone: Europe/Kyiv
