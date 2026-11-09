@@ -1,0 +1,6 @@
+---
+- name: Встановлення Authelia на вузол
+  hosts: authelia
+  roles:
+    # - docker_engine
+    - authelia/deploy

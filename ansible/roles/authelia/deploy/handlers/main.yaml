@@ -1,0 +1,12 @@
+- name: Restart Nginx
+  block:
+    - name: Check if Nginx configuration is correct
+      ansible.builtin.command:
+        argv:
+          - nginx
+          - -t
+        changed_when: false
+    - name: Reload Nginx configuration
+      ansible.builtin.service:
+        name: nginx
+        state: reload

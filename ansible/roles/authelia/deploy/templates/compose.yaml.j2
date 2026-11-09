@@ -1,0 +1,38 @@
+services:
+  authelia:
+    image: {{ authelia_image }}
+    container_name: authelia
+    restart: unless-stopped
+
+    volumes:
+      - ./config:/config:ro
+      - ./data:/data
+      - ./secrets:/secrets:ro
+
+    environment:
+      TZ: "{{ authelia_timezone }}"
+      AUTHELIA_AUTHENTICATION_BACKEND_LDAP_PASSWORD_FILE: /secrets/ldap_password
+      AUTHELIA_SESSION_SECRET_FILE: /secrets/session_secret
+      AUTHELIA_STORAGE_ENCRYPTION_KEY_FILE: /secrets/storage_encryption_key
+      AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET_FILE: /secrets/jwt_secret
+
+    ports:
+      - "127.0.0.1:9091:9091"
+
+    networks:
+      - auth
+      - backend
+
+  redis:
+    image: "{{ authelia_redis_image }}"
+    container_name: authelia-redis
+    restart: unless-stopped
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    networks:
+      - backend
+
+networks:
+  auth:
+    external: true
+  backend:
+    internal: true

@@ -1,3 +1,33 @@
-authelia_timezone: "{{ homelab_timezone }}"
-authelia_image: authelia/authelia:4.39
-authelia_redis_image: redis:7-alpine
+authelia_certs_dir_origin: "{{ vault_certs_dir_origin }}"
+authelia_svc_user: "{{vault_authelia_svc_user}}"
+authelia_svc_password: "{{vault_authelia_svc_password}}"
+authelia_session_secret: "{{vault_authelia_session_secret}}"
+authelia_storage_encryption_key: "{{vault_authelia_storage_encryption_key}}"
+authelia_jwt_secret: "{{vault_authelia_jwt_secret}}"
+authelia_oidc_hmac_secret: "{{vault_authelia_oidc_hmac_secret}}"
+authelia_oidc_jwks_key: "{{vault_authelia_oidc_jwks_key}}"
+
+authelia_oidc_clients:
+  - client_id: 'portainer'
+    client_name: 'Portainer'
+    client_secret: "{{vault_authelia_oidc_portainer_secret_hash}}"
+    public: false
+
+    authorization_policy: 'two_factor'
+    require_pkce: false
+
+    redirect_uris:
+      - 'https://pibody.boretz.org:9443'
+
+    scopes:
+      - 'openid'
+      - 'profile'
+      - 'groups'
+      - 'email'
+
+    response_types:
+      - 'code'
+    grant_types:
+      - 'authorization_code'
+
+    token_endpoint_auth_method: 'client_secret_post'

@@ -1,0 +1,137 @@
+- name: Validate required Authelia variables
+  ansible.builtin.assert:
+    that:
+      - lookup('ansible.builtin.vars', item, default='') | string | trim | length > 0
+    fail_msg: "Required variable '{{ item }}' is undefined or empty"
+    quiet: true
+  loop:
+    - authelia_work_dir
+    - authelia_fqdn
+    - authelia_timezone
+    - authelia_certs_dir_origin
+    - authelia_image
+    - authelia_redis_image
+    - authelia_svc_user
+    - authelia_svc_password
+    - authelia_session_secret
+    - authelia_storage_encryption_key
+    - authelia_jwt_secret
+  no_log: true
+
+- name: Validate unique OIDC client IDs
+  ansible.builtin.assert:
+    that:
+      - >-
+        authelia_oidc_clients | map(attribute='client_id') | list | length
+        ==
+        authelia_oidc_clients | map(attribute='client_id') | unique | list | length
+    fail_msg: "Duplicate OIDC client_id detected"
+
+- name: Prepare Directories
+  ansible.builtin.file:
+    path: "{{ item.dir }}"
+    state: directory
+    mode: "{{item.mode}}"
+  loop:
+    - {mode: "0755", dir: "{{ authelia_work_dir }}" }
+    - {mode: "0755", dir: "{{ authelia_work_dir }}/data"}
+    - {mode: "0755", dir: "{{ authelia_work_dir }}/config"}
+    - {mode: "0700", dir: "{{ authelia_work_dir }}/secrets"}
+
+- name: Deploy configuration files from template
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    mode: "0755"
+  # no_log: true
+  loop: "{{authelia_configuration_templates}}"
+
+- name: Deploy secret files
+  ansible.builtin.copy:
+    content: "{{item.content}}"
+    dest: "{{ authelia_work_dir }}/secrets/{{item.dest}}"
+    mode: "0600"
+  loop: "{{authelia_secrets_list}}"
+  no_log: true
+
+- name: Start Authelia in Docker
+  community.docker.docker_compose_v2:
+    project_src: "{{ authelia_work_dir }}"
+    state: present
+    pull: missing
+    recreate: auto
+
+- name: Start reverse proxy by Nginx
+  block:
+    - name: Deploy Nginx configuration
+      ansible.builtin.template:
+        src: auth_nginx.conf.j2
+        dest: "/etc/nginx/sites-available/{{ authelia_fqdn }}.conf"
+        mode: "0644"
+        backup: true
+      register: nginx_config
+
+    - name: Check existing symlink
+      ansible.builtin.stat:
+        path: "/etc/nginx/sites-enabled/{{ authelia_fqdn }}.conf"
+        follow: false
+      register: nginx_site_link_before
+
+    - name: Validate existing symlink
+      ansible.builtin.assert:
+        that:
+          - >-
+            not nginx_site_link_before.stat.exists
+            or (
+              nginx_site_link_before.stat.islnk | default(false)
+              and nginx_site_link_before.stat.lnk_source ==
+              '/etc/nginx/sites-available/' ~ authelia_fqdn ~ '.conf'
+            )
+
+    - name: Enable Nginx site
+      ansible.builtin.file:
+        src: "/etc/nginx/sites-available/{{ authelia_fqdn }}.conf"
+        dest: "/etc/nginx/sites-enabled/{{ authelia_fqdn }}.conf"
+        state: link
+      register: nginx_site_link
+
+    - name: Validate Nginx configuration
+      ansible.builtin.command:
+        argv:
+          - nginx
+          - -t
+      changed_when: false
+
+    - name: Ensure Nginx is running
+      ansible.builtin.service:
+        name: nginx
+        state: started
+        enabled: true
+      register: nginx_service
+
+    - name: Reload Nginx
+      ansible.builtin.service:
+        name: nginx
+        state: reloaded
+      when:
+        - nginx_config.changed or nginx_site_link.changed
+        - not nginx_service.changed
+
+  rescue:
+    - name: Remove newly created symlink
+      ansible.builtin.file:
+        path: "/etc/nginx/sites-enabled/{{ authelia_fqdn }}.conf"
+        state: absent
+      when:
+        - nginx_site_link_before is defined
+        - nginx_site_link_before.stat is defined
+        - not nginx_site_link_before.stat.exists
+        - nginx_site_link is defined
+        - nginx_site_link.changed | default(false)
+
+    - name: Fail with original error
+      ansible.builtin.fail:
+        msg: >-
+          Nginx configuration failed at
+          '{{ ansible_failed_task.name }}':
+          {{ ansible_failed_result.msg | default('Unknown error') }}

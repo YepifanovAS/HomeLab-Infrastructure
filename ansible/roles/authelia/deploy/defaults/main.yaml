@@ -1,0 +1,5 @@
+authelia_work_dir: "/opt/authelia"
+authelia_fqdn: "auth.{{ homelab_domain }}"
+authelia_timezone: "{{ homelab_timezone }}"
+authelia_image: authelia/authelia:4.39
+authelia_redis_image: redis:7-alpine

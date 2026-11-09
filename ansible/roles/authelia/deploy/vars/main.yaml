@@ -1,0 +1,14 @@
+authelia_configuration_templates:
+- src: compose.yaml.j2
+  dest: "{{ authelia_work_dir }}/docker-compose.yaml"
+- src: "configuration.yaml.j2"
+  dest: "{{ authelia_work_dir }}/config/configuration.yml"
+authelia_secrets_list:
+- content: "{{authelia_svc_password}}"
+  dest: ldap_password
+- content: "{{authelia_session_secret}}"
+  dest: session_secret
+- content: "{{authelia_storage_encryption_key}}"
+  dest: storage_encryption_key
+- content: "{{authelia_jwt_secret}}"
+  dest: jwt_secret
