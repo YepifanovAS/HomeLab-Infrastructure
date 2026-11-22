@@ -1,0 +1,11 @@
+- name: Remove denied packages
+  ansible.builtin.apt:
+    name: "{{denied_package_list}}"
+    state: absent
+
+- name: Install required packages
+  ansible.builtin.apt:
+    name: "{{required_package_list}}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600

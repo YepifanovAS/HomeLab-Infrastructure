@@ -1,0 +1,11 @@
+#ansible_runtime_dir: "{{ lookup('ansible.builtin.env', 'ANSIBLE_RUNTIME_DIR', default=undef()) }}"
+ansible_runtime_dir: "/home/ayepifanov/projects/homelab-infrastructure/ansible/runtime"
+#ansible_export_dir: "/home/ayepifanov/projects/homelab-infrastructure/ansible/export"
+
+
+required_package_list:
+  - htop
+  - tree
+  - jq
+  - tmux
+denied_package_list: []
