@@ -1,0 +1,183 @@
+
+- name: Отримання статусу сервісу OpenBao
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - "{{openbao_service_name}}"
+      - bao
+      - operator
+      - init
+      - -status
+  changed_when: false
+  register: openbao_init_status_check_results
+  failed_when: >-
+    openbao_init_status_check_results.rc not in [0,2]
+- name: Отримання властивості файлу bootstrap.json на віддаленому вузлі
+  ansible.builtin.stat:
+    path: "{{openbao_workdir}}/home/bootstrap.json"
+    follow: false
+  register: bootstrap_json_remote_copy
+- name: Отримання властивості файлу bootstrap.json на локальному вузлі
+  ansible.builtin.stat:
+    path: "{{ ansible_runtime_dir }}/{{ inventory_hostname }}/{{ openbao_service_name }}/bootstrap.json"
+  register: bootstrap_json_local_copy
+  delegate_to: localhost
+  become: false
+
+
+- name: OpenBao ще не ініціалізовано
+  block:
+    # Блок початкових перевірок для неініціалізованого стану OpenBao
+    - name: Перевірка на існування bootstrap.json на віддаленому вузлі
+      ansible.builtin.assert:
+        that:
+          - not bootstrap_json_remote_copy.stat.exists
+        fail_msg: |
+          OpenBao не ініціалізоване, але файл bootstrap.json на вузлі {{ansible_facts["fqdn"]}} інує!
+    - name: Перевірка на існування bootstrap.json на віддаленому вузлі
+      ansible.builtin.assert:
+        that:
+          - not bootstrap_json_local_copy.stat.exists
+        fail_msg: OpenBao не ініціалізоване, але файл bootstrap.json був завантажений локально!
+    - name: Перевірка на визначення змінної root_token
+      ansible.builtin.assert:
+        that: >-
+          vault_openbao_root_token[openbao_service_name] is not defined
+          or ( vault_openbao_root_token[inventory_hostname]][openbao_service_name] is string
+            and vault_openbao_root_token[inventory_hostname][openbao_service_name] | trim | length == 0 )
+        fail_msg: |
+          Значення vault_openbao_root_token для {{inventory_hostname}}.{{openbao_service_name}} вже визначено, але OpenBao не ініціалізовано!
+
+    - name: Upload PGP public key
+      ansible.builtin.copy:
+        src: "{{ansible_runtime_dir}}/keys/{{openbao_initialize_encrypt_key_file}}"
+        dest: "{{openbao_workdir}}/secrets/encrypt-key.pgp"
+        owner: "{{openbao_user_uid}}"
+        group: "{{openbao_user_gid}}"
+        mode: "0600"
+    - name: Initialize OpenBao vault with encrypted token and recovery key.
+      block:
+        - name: Initialize OpenBao
+          ansible.builtin.shell: |
+            umask 077
+            docker exec {{openbao_service_name}} bao operator init \
+              -recovery-shares=1 \
+              -recovery-threshold=1 \
+              -recovery-pgp-keys=/openbao/secrets/encrypt-key.pgp \
+              -root-token-pgp-key=/openbao/secrets/encrypt-key.pgp \
+              -format=json > {{openbao_workdir}}/home/bootstrap.json
+          args:
+            creates: "{{openbao_workdir}}/home/bootstrap.json"
+          no_log: true
+      rescue:
+        - name: Delete empty bootstrap file
+          ansible.builtin.file:
+            path: "{{openbao_workdir}}/home/bootstrap.json"
+            state: absent
+          when:
+            - rescue_openbao_bootstrap_json_file_stats.stat.exists
+            - rescue_openbao_bootstrap_json_file_stats.stat.size == 0
+        - name: Print message with error
+          ansible.builtin.fail:
+            msg: OpenBao Initialization was not ended correctly.
+  when: openbao_init_status_check_results.rc == 2
+
+
+# На цьому місці ми точно знаємо, що OpenBao було ініціалізовано.
+# Якщо змінна vault_openbao_root_token[inventory_hostname][openbao_service_name] на визначена,
+#   завантажити bootstrap.json та вивести подальші інструкції.
+- name: Обробка bootstrap.json
+  block:
+    - name: перевірка, що файл bootstrap.json має правильний формат та містить усі необхідні елементи.
+      block:
+        - name: перевірка, що файл bootstrap.json має правильний формат та містить усі необхідні елементи.
+          ansible.builtin.command:
+            argv:
+              - jq
+              - -e
+              - |
+                (.root_token | type == "string" and length > 0 ) and
+                ( . as $obj |
+                  all(
+                    ["recovery_keys_b64", "recovery_keys_hex"][];
+                    $obj[.] |
+                      type == "array" and
+                      (.[0] | type == "string" and length > 0)
+                  )
+                )
+              - "{{openbao_workdir}}/home/bootstrap.json"
+          register: bootstrap_json_validation
+          changed_when: false
+      rescue:
+        - name: Валідація bootstrap.json не пройдено вивести повідомлення про помилку та зупинити виконання
+          ansible.builtin.fail:
+            msg: |
+              Необхідно перевірити правильність ініціалізації OpenBao та причини, чому файл bootstrap.json
+              не містить необхідних елементів.
+    - name: Отримати файл bootstrap.json локально.
+      ansible.builtin.fetch:
+        src: "{{openbao_workdir}}/home/bootstrap.json"
+        dest: "{{ ansible_runtime_dir }}/{{ inventory_hostname }}/{{ openbao_service_name }}/bootstrap.json"
+        flat: true
+    - name: Повідомити про наступні дії
+      ansible.builtin.debug:
+        msg: |
+          Файл bootstrap.json завантажено в {{ ansible_runtime_dir }}/{{ inventory_hostname }}/{{ openbao_service_name }}.
+          Виконайте дешифрування root_token, recovery_keys з файлу,
+          та збережіть root_token в файл inventory/group_vars/all/vault.yaml
+          в змінну vault_openbao_root_token.{{inventory_hostname}}.{{openbao_service_name}}.
+          Ключі відновлення recovery_keys зберікайте в окремому захищеному місці.
+    - name: Зупинити подальше виконання плейбуку.
+      ansible.builtin.fail:
+        msg: "Збережи ключі відновлення та root_token, потім повтори запуск."
+  when: >-
+    vault_openbao_root_token[inventory_hostname][openbao_service_name] is not defined
+    or ( vault_openbao_root_token[inventory_hostname][openbao_service_name] | trim | length == 0 )
+
+# на цьому місці ми точно знаємо, що OpenBao було ініціалізовано, файл bootstrap.json завантажено на локальну машину,
+# а також визначено змінну vault_openbao_root_token[openbao_service_name].
+# Необхідно провести перевірку, що зазначений токен відповідає поточному екземпляру OpenBao,
+# та оператором було видалено усі файли bootstrap.json
+- name: Перевірка відповідності vault_openbao_root_token
+  block:
+    - name: перевірка коректності зазначеного токена
+      block:
+        - name: намагаємось автентифікуватися зазначеним токеном
+          ansible.builtin.command:
+            argv:
+              - docker
+              - exec
+              - -e
+              - BAO_TOKEN
+              - "{{openbao_service_name}}"
+              - bao
+              - token
+              - lookup
+              - -format=json
+          environment:
+            BAO_TOKEN: "{{ vault_openbao_root_token[inventory_hostname][openbao_service_name] }}"
+          register: openbao_token_authenticate_result
+          no_log: true
+          #register:
+          changed_when: false
+        - name: Перевірка прав токену
+          ansible.builtin.assert:
+            that:
+              - "'root' in (openbao_token_authenticate_result.stdout | from_json).data.policies"
+          no_log: true
+      rescue:
+        - name: Автентифікація наявним токеном не пройдена, вивести повідомлення про помилку та зупинити виконання
+          ansible.builtin.fail:
+            msg: |
+              Зазначений токен vault_openbao_root_token.{{inventory_hostname}}.{{openbao_service_name}} не відповідає
+              екземпляру OpenBao на вузлі {{ansible_facts["fqdn"]}}
+    - name: Перевірка наявності файлів bootstrap.json
+      ansible.builtin.assert:
+        that:
+          - not bootstrap_json_remote_copy.stat.exists
+          - not bootstrap_json_local_copy.stat.exists
+        fail_msg: |
+          Після дешифрування root_token для запобігання інформаційних загроз необхідно
+          видалити усі файли bootstrap.json, як в каталозі {{ ansible_runtime_dir }}/{{ inventory_hostname }}/{{ openbao_service_name }},
+          так і на віддаленому вузлі {{ansible_facts["fqdn"]}}

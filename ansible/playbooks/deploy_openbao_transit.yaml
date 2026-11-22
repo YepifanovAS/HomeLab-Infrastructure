@@ -1,0 +1,39 @@
+---
+# - name: Підготовка вузла
+#   hosts: kms
+#   roles:
+#     - system_base
+#     - docker_engine
+#
+# - name: Create OpenBao user
+#   hosts: kms
+#   tasks:
+#     - name: Create OpenBao user
+#       ansible.builtin.include_role:
+#         name: user/create
+#       vars:
+#         user_create_name: openbao
+#         user_create_uid: "{{ openbao_user_uid }}"
+#         user_create_gid: "{{ openbao_user_gid }}"
+#         user_create_home: "/opt/openbao"
+#         user_create_home_enabled: false
+#         user_create_comment: "OpenBao service account"
+
+- name: Виконати розгортання екземпляру OpenBao Transit
+  hosts: kms
+  tasks:
+    - name: Виконати розгортання екземпляру OpenBao
+      ansible.builtin.include_role:
+        name: openbao/deploy
+      vars:
+        openbao_service_name: "openbao-transit"
+        openbao_listen_address: "{{openbao_kms_listen}}"
+        openbao_service_fqdn_name: "{{openbao_kms_fqdn_name}}"
+        openbao_tls_enabled: true
+        openbao_seal_type: "static"
+        openbao_seal_static_unseal_key: "{{vault_openbao_kms_unseal_key}}"
+    - name: Провести ініціалізацю сховища OpenBao Transit
+      ansible.builtin.include_role:
+        name: openbao/initialize
+      vars:
+        openbao_service_name: "openbao-transit"

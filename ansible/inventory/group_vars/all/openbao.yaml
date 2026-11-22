@@ -1,0 +1,9 @@
+openbao_vault_fqdn_name: "vault.{{homelab_domain}}"
+openbao_kms_fqdn_name: "kms.{{homelab_domain}}"
+openbao_kms_listen: "192.168.0.232"
+openbao_kms_unseal_key: "{{vault_openbao_kms_unseal_key}}"
+
+openbao_user_uid: 2001
+openbao_user_gid: 2001
+
+openbao_workdir: "/opt/openbao"

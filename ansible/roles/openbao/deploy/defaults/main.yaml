@@ -1,0 +1,16 @@
+openbao_service_fqdn_name: "bao.example.com"
+openbao_listen_address: "127.0.0.1"
+openbao_service_name: "openbao"
+
+openbao_image: openbao/openbao:2.7.1
+openbao_webui_enable: false
+openbao_user_uid: 2001
+openbao_user_gid: 2001
+
+openbao_tls_enabled: false
+
+# allowed 'static' and 'transit'
+openbao_seal_type: "transit"
+openbao_seal_transit_fqdn: "kms.example.com"
+openbao_seal_transit_key_name: "openbao-transit"
+openbao_seal_static_unseal_key: ""

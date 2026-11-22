@@ -1,0 +1,40 @@
+ui = {{"true" if openbao_webui_enable else "false" }}
+disable_mlock = true
+
+api_addr     = "https://{{openbao_service_fqdn_name}}:8200"
+cluster_addr = "https://{{openbao_service_fqdn_name}}:8201"
+
+storage "raft" {
+  path    = "/openbao/data"
+  node_id = "raspberry-pi"
+}
+
+listener "tcp" {
+  address         = "0.0.0.0:8200"
+  cluster_address = "0.0.0.0:8201"
+{% if openbao_tls_enabled %}
+  tls_cert_file             = "/openbao/tls/fullchain.pem"
+  tls_key_file              = "/openbao/tls/privkey.pem"
+  tls_min_version           = "tls12"
+  tls_auto_reload           = true
+  tls_disable_client_certs  = true
+{% else %}
+  tls_disable = true
+{% endif %}
+}
+
+{% if openbao_seal_type == "static" %}
+seal "static" {
+  current_key_id = "20261109-1"
+  current_key    = "file:///openbao/secrets/unseal.key"
+}
+{% endif %}
+
+{% if openbao_seal_type == "transit" %}
+seal "transit" {
+  address         = "https://{{openbao_seal_transit_fqdn}}"
+  key_name        = "{{openbao_seal_transit_key_name}}"
+  mount_path      = "transit/"
+  disable_renewal = false
+}
+{% endif %}

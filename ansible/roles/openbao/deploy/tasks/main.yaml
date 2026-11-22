@@ -1,0 +1,85 @@
+# Організувати перевірку змінних в залежності від типу "seal"
+# Поки що вважаємо що все налаштовано як належить.
+
+# Перевірка загальних змінних
+# - name: Validate general OpenBao variables
+#   ansible.builtin.assert:
+#     that:
+#       - lookup('ansible.builtin.vars', item, default='') | string | trim | length > 0
+#     fail_msg: "Required variable '{{ item }}' is undefined or empty"
+#     quiet: true
+#   loop:
+#     -
+#   no_log: true
+
+# Перевірка необхідних змінних для seal=static
+- name: Validate OpenBao variables for seal==static
+  ansible.builtin.assert:
+    that:
+      - lookup('ansible.builtin.vars', item, default='') | string | trim | length > 0
+    fail_msg: "Required variable '{{ item }}' is undefined or empty"
+    quiet: true
+  loop:
+    - openbao_seal_static_unseal_key
+  no_log: true
+
+- name: Prepare Directories
+  ansible.builtin.file:
+    path: "{{ item.dir }}"
+    state: directory
+    mode: "{{item.mode}}"
+    owner: "{{openbao_user_uid}}"
+    group: "{{openbao_user_uid}}"
+  loop:
+    - {mode: "0755", dir: "{{ openbao_workdir }}" }
+    - {mode: "0755", dir: "{{ openbao_workdir }}/config"}
+    - {mode: "0755", dir: "{{ openbao_workdir }}/data"}
+    - {mode: "0700", dir: "{{ openbao_workdir }}/home"}
+    - {mode: "0700", dir: "{{ openbao_workdir }}/secrets"}
+    - {mode: "0700", dir: "{{ openbao_workdir }}/tls"}
+
+- name: Deploy configuration files from template
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    mode: "0644"
+    owner: "{{openbao_user_uid}}"
+    group: "{{openbao_user_uid}}"
+  loop:
+    - src: compose.yaml.j2
+      dest: "{{ openbao_workdir }}/docker-compose.yaml"
+    - src: openbao.hcl.j2
+      dest: "{{ openbao_workdir }}/config/openbao.hcl"
+
+- name: Deploy unseal key for seal==static
+  ansible.builtin.copy:
+    content: "{{openbao_kms_unseal_key}}"
+    dest: "{{ openbao_workdir }}/secrets/unseal.key"
+    mode: "0600"
+    owner: "{{openbao_user_uid}}"
+    group: "{{openbao_user_uid}}"
+  no_log: true
+  when: openbao_seal_type == "static"
+
+# Локальне джерело сертифікатів, {{ansible_runtime_dir}}/{{openbao_service_name}}/certs/
+- name: Copy certificates for OpenBao Transit
+  ansible.builtin.copy:
+    src: "{{ansible_runtime_dir}}/{{openbao_service_name}}/certs/{{ item }}"
+    dest: "{{ openbao_workdir }}/tls/{{ item }}"
+#    remote_src: true
+    local_follow: true
+    mode: "0600"
+    owner: "{{openbao_user_uid}}"
+    group: "{{openbao_user_uid}}"
+  loop:
+    - fullchain.pem
+    - privkey.pem
+  no_log: true
+  when: openbao_tls_enabled
+
+- name: Start OpenBao Transit in Docker
+  community.docker.docker_compose_v2:
+    project_src: "{{ openbao_workdir }}"
+    state: present
+    pull: missing
+    recreate: auto

@@ -1,0 +1,34 @@
+services:
+  {{openbao_service_name}}:
+    user: "{{openbao_user_uid}}:{{openbao_user_gid}}"
+    image: {{openbao_image}}
+    container_name: {{openbao_service_name}}
+    restart: unless-stopped
+
+    command: server -config=/openbao/config/openbao.hcl
+
+    environment:
+      HOME: "/home"
+      BAO_ADDR: https://127.0.0.1:8200
+      BAO_TLS_SERVER_NAME: {{openbao_service_fqdn_name}}
+{% if openbao_seal_type == "transit" %}
+      BAO_TOKEN: "${OPENBAO_TRANSIT_TOKEN}"
+{% endif %}
+
+    ports:
+      - "{{openbao_listen_address}}:8200:8200"
+{% if openbao_seal_type == "transit" %}
+      - "{{openbao_listen_address}}:8201:8201"
+{% endif %}
+
+    volumes:
+      - ./config:/openbao/config:ro
+      - ./secrets:/openbao/secrets:ro
+      - ./tls:/openbao/tls:ro
+      - ./data:/openbao/data
+      - ./home:/home
+
+    security_opt:
+      - no-new-privileges:true
+
+    mem_swappiness: 0
